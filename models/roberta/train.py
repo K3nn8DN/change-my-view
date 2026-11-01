@@ -41,7 +41,7 @@ MODEL_NAME = "roberta-base"
 MAX_LENGTH = 512        # RoBERTa's limit; longer post + comment texts are cut
 BATCH_SIZE = 8          # pairs per step (each pair is two comments for the model)
 LEARNING_RATE = 2e-5    # small, because we only nudge the pretrained weights
-EPOCHS = 2
+EPOCHS = 5
 WARMUP_FRACTION = 0.1   # the learning rate rises for this fraction of the steps, then falls to 0
 SEED = 0
 USE_POST = True         # False = score the comment alone, for the context-sensitivity experiment
