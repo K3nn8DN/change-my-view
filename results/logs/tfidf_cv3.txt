@@ -1,0 +1,15 @@
+22323 pairs, 3167 posts, 5 folds by post
+Length baseline, overall: 0.7133
+
+min_df 5, reg 1e-4, gate none     overall 0.7108  balanced 0.5304 ± 0.0094
+min_df 5, reg 1e-4, gate 3        overall 0.7112  balanced 0.5286 ± 0.0083  vs first: overall +0.0004, balanced -0.0018 (better in 0/5)
+min_df 5, reg 1e-4, gate 2        overall 0.7127  balanced 0.5246 ± 0.0083  vs first: overall +0.0018, balanced -0.0059 (better in 0/5)
+min_df 5, reg 1e-4, gate 1.5      overall 0.7149  balanced 0.5170 ± 0.0071  vs first: overall +0.0040, balanced -0.0134 (better in 0/5)
+min_df 10, reg 1e-5, gate none    overall 0.6980  balanced 0.5429 ± 0.0093  vs first: overall -0.0129, balanced +0.0125 (better in 5/5)
+min_df 10, reg 1e-5, gate 3       overall 0.7028  balanced 0.5343 ± 0.0075  vs first: overall -0.0081, balanced +0.0039 (better in 3/5)
+min_df 10, reg 1e-5, gate 2       overall 0.7088  balanced 0.5262 ± 0.0082  vs first: overall -0.0020, balanced -0.0042 (better in 1/5)
+min_df 10, reg 1e-5, gate 1.5     overall 0.7132  balanced 0.5161 ± 0.0073  vs first: overall +0.0024, balanced -0.0144 (better in 0/5)
+min_df 20, reg 1e-5, gate none    overall 0.6916  balanced 0.5432 ± 0.0082  vs first: overall -0.0192, balanced +0.0128 (better in 5/5)
+min_df 20, reg 1e-5, gate 3       overall 0.6982  balanced 0.5317 ± 0.0068  vs first: overall -0.0126, balanced +0.0013 (better in 4/5)
+min_df 20, reg 1e-5, gate 2       overall 0.7062  balanced 0.5243 ± 0.0077  vs first: overall -0.0046, balanced -0.0061 (better in 0/5)
+min_df 20, reg 1e-5, gate 1.5     overall 0.7121  balanced 0.5154 ± 0.0057  vs first: overall +0.0013, balanced -0.0150 (better in 0/5)

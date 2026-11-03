@@ -21,6 +21,7 @@ from datasets import load_dataset
 import nltk
 from nltk.sentiment.util import mark_negation as negate
 import pandas as pd
+import re
 
 DATASET_NAME = "stanfordnlp/SHP"
 MAIN_SUBREDDIT = "changemyview"
@@ -36,6 +37,7 @@ UNSEEN_SUBREDDITS = [subreddit for subreddit in SUBREDDITS if subreddit not in T
 
 MIN_SCORE_RATIO = 2.0   # winner needs 2x the loser's upvotes, otherwise the label is too noisy
 MAX_PAIRS_PER_POST = 5  # so a few huge threads don't dominate the data
+TRAIN_MAX_PAIRS_PER_POST = None # Was 10
 DEV_SHARE = 0.1  # share of the train posts moved to dev: SHP's dev split has only 177 r/ChangeMyView posts
 # How many times longer the longer comment is, in buckets. balance_length evens out each bucket.
 LENGTH_RATIO_BINS = [1, 1.25, 1.5, 2, 3, 5, float("inf")]
@@ -52,7 +54,10 @@ MOD_FOOTERS = ["Hello, users of CMV! This is a footnote from your moderators",
                "This is a footnote from the CMV moderators"]  # how the two footers start
 # How bot notes start: the moderators' note, and DeltaBot's "/u/name (OP) has awarded 2 deltas"
 BOT_COMMENTS = ["your thread has not been removed", "(op) has awarded"]
-
+# "Edit:" notes are often written after the upvotes ("thanks for the gold")
+# Everything from the first one on is cut, unless it starts the comment.
+STRIP_EDITS = True
+EDIT_MARKER = re.compile(r"\b(?:edit(?:ed)?|update)\s*\d*\s*:", re.IGNORECASE)
 PAD, UNK = "<PAD>", "<UNK>"  # padding for the BiLSTM, and the stand-in for words not in the vocabulary
 TEXT_COLUMNS = ["history", "human_ref_A", "human_ref_B"]
 MODEL_COLUMNS = ["subreddit", "post_id", "history", "human_ref_A", "human_ref_B", "labels"]
@@ -84,11 +89,25 @@ def is_bot_comment(comment):
     start = comment[:80].lower().replace("*", "")
     return any(note in start for note in BOT_COMMENTS)
 
+def cut_edits(comment):
+    """Comment without its edit notes. An edit at start of a comment is kept 
+    (the comment may be all edit)."""
+    for match in EDIT_MARKER.finditer(comment):
+        if match.start() > 0:
+            kept = comment[:match.start()].rstrip(" *_-")
+            return kept if kept.strip() else comment
+    return comment
+
 def clean_pairs(pairs):
     """Cuts the moderator footer off the posts and drops pairs where a comment is a moderator
     bot note."""
     footerless = {post: cut_footer(post) for post in pairs["history"].unique()}  # a post is in many pairs
     pairs = pairs.assign(history=pairs["history"].map(footerless))
+    
+    if STRIP_EDITS:
+        pairs = pairs.assign(human_ref_A=pairs["human_ref_A"].map(cut_edits),
+                             human_ref_B=pairs["human_ref_B"].map(cut_edits))
+        
     is_bot = pairs["human_ref_A"].map(is_bot_comment) | pairs["human_ref_B"].map(is_bot_comment)
     return pairs[~is_bot]
 
@@ -103,17 +122,17 @@ def filter_pairs(pairs, max_per_post=MAX_PAIRS_PER_POST):
                     .sort_index())
     return kept.reset_index(drop=True)
 
-def prepare(pairs, filtered, columns_only):
+def prepare(pairs, filtered, columns_only, max_per_post=MAX_PAIRS_PER_POST):
     """The pairs, filtered or not, with all columns or only the ones the models use."""
     if filtered:
-        pairs = filter_pairs(pairs)
+        pairs = filter_pairs(pairs, max_per_post)
     return pairs[MODEL_COLUMNS] if columns_only else pairs
 
 def load_training_data(subreddits=TRAIN_SUBREDDITS, filtered=True, columns_only=False):
     """Train and dev pairs of several subreddits, stacked into (train, dev)."""
     splits = [load_subreddit(subreddit) for subreddit in subreddits]
-    train = pd.concat([prepare(split["train"], filtered, columns_only) for split in splits],
-                      ignore_index=True)
+    train = pd.concat([prepare(split["train"], filtered, columns_only, TRAIN_MAX_PAIRS_PER_POST)
+                       for split in splits], ignore_index=True)
     dev = pd.concat([prepare(split["validation"], filtered, columns_only) for split in splits],
                     ignore_index=True)
     return train, dev
@@ -229,7 +248,7 @@ LINK_STARTS = ("https://", "http://", "www.")
 LINK_STOPS = ")]"            # a link ends at a space or a closing bracket
 LINK_TRAILING = ".,!?;:'\""  # the punctuation of the sentence after a link is not part of it
 # Punctuation that is less likely to carry meaning
-FORMATTING = {"*", ",", ":", "$", "'", "`", "``", "''", "(", ")", "{", "}", "[", "]", ";", "%",
+FORMATTING = {"*", ",", ":", "'", "`", "``", "''", "(", ")", "{", "}", "[", "]", ";",
               "-", "--", "—", "–"}
 
 def link_end(text, start):
