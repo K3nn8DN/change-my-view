@@ -224,3 +224,4 @@ data/cache/
 # Fine-tuned model weights
 models/roberta/checkpoint/
 models/roberta/resume_checkpoint/
+.DS_Store

@@ -1,0 +1,8 @@
+22323 pairs, 3167 posts, 5 folds by post
+Length baseline, overall: 0.7133
+
+min_df 5, reg 1e-4      overall 0.7108  balanced 0.5304 ± 0.0094
+min_df 5, reg 1e-5      overall 0.7017  balanced 0.5391 ± 0.0081  vs first: +0.0086, better in 5/5 folds
+min_df 10, reg 1e-5     overall 0.6980  balanced 0.5429 ± 0.0093  vs first: +0.0125, better in 5/5 folds
+min_df 20, reg 1e-5     overall 0.6916  balanced 0.5432 ± 0.0082  vs first: +0.0128, better in 5/5 folds
+min_df 20, reg 1e-4     overall 0.7056  balanced 0.5358 ± 0.0067  vs first: +0.0054, better in 4/5 folds
