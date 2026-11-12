@@ -24,7 +24,8 @@ import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # the repo root, so we can import data/
-from data.load_data import TRAIN_SUBREDDITS, UNSEEN_SUBREDDITS, balance_length, length_ratio, load_test_sets, load_training_data, pick_longer, load_winning_args
+from data.load_data import TRAIN_SUBREDDITS, UNSEEN_SUBREDDITS, balance_length, length_ratio, load_test_sets, load_training_data, pick_longer, load_winning_args, words
+from sklearn.linear_model import LogisticRegression
 
 from results.metrics.cost import report_cost
 from results.metrics.length_independence import accuracy_by_length_ratio
@@ -49,6 +50,7 @@ USE_POST = True         # False = score the comment alone, for the context-sensi
 # Train only on pairs where the longer comment wins half the time, so the model cannot learn
 # "longer wins" and has to use the words. False trains on all pairs.
 LENGTH_BALANCED = False
+USE_LENGTH = True  # add a fixed weight * log(1 + words) to each score
 
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "checkpoint"
 RESUME_PATH = Path(__file__).resolve().parent / "resume_checkpoint" / "training_state.pt"  # saved after every epoch, so --resume-training can continue
@@ -97,6 +99,17 @@ class RoBERTa:
         set_seed(SEED)
         self.tokenizer = AutoTokenizer.from_pretrained(source)
         self.model = AutoModelForSequenceClassification.from_pretrained(source, num_labels=1).to(DEVICE)
+        
+        weight_file = Path(source) / "length_weight.txt"
+        self.length_weight = float(weight_file.read_text()) if weight_file.exists() else 0.0
+
+    def fit_length_weight(self, train):
+        """Sets the length weight to that of a logistic regression on log(1 + words) alone,
+        so the model starts as good as the length baseline and training learns the text."""
+        x = (np.log1p(words(train["human_ref_A"])) - np.log1p(words(train["human_ref_B"]))).to_numpy()
+        regression = LogisticRegression(fit_intercept=False).fit(x[:, None], train["labels"])
+        self.length_weight = float(regression.coef_[0, 0])
+        print(f"Length weight: {self.length_weight:.4f}")
 
     def encode(self, posts, comments):
         """Turns (post, comment) text pairs into model inputs. The post is the context. If USE_POST
@@ -116,7 +129,12 @@ class RoBERTa:
         comments = list(pairs["human_ref_A"]) + list(pairs["human_ref_B"])
         with autocast():
             scores = self.model(**self.encode(posts + posts, comments)).logits.squeeze(-1)
-        return scores[:len(pairs)].float(), scores[len(pairs):].float()
+        
+        scores = scores.float()
+        if USE_LENGTH:  # Words in the full comment, even if it was cut
+            counts = np.concatenate([words(pairs["human_ref_A"]), words(pairs["human_ref_B"])])
+            scores = scores + self.length_weight * torch.tensor(np.log1p(counts), dtype=torch.float, device=DEVICE)
+        return scores[:len(pairs)], scores[len(pairs):]
 
     def fit(self, train, dev, epochs=EPOCHS, resume=False):
         """Fine-tunes on the training pairs. Keeps the weights of the epoch with the best dev
@@ -223,7 +241,9 @@ class RoBERTa:
     def save(self, directory):
         """Saves the model and the tokenizer, so they can be loaded again with from_pretrained."""
         self.model.save_pretrained(directory)
-        self.tokenizer.save_pretrained(directory)
+        
+        # Allow test to load the same length weight used in training
+        (Path(directory) / "length_weight.txt").write_text(str(self.length_weight))
 
 
 
@@ -249,6 +269,8 @@ if __name__ == "__main__":
     if do_train:
         start = time.perf_counter()
         model = RoBERTa()
+        if USE_LENGTH:
+            model.fit_length_weight(train)
         model.fit(train, dev, epochs=EPOCHS, resume=resume)
         report_cost(time.perf_counter() - start, sum(weight.numel() for weight in model.model.parameters()))
         model.save(CHECKPOINT_DIR)
