@@ -31,6 +31,7 @@ from results.metrics.length_independence import accuracy_by_length_ratio
 from results.run_log import save_output
 from results.metrics.accuracy import accuracy, confusion_report, evaluate
 from results.visualizations.roc import auc, roc_chart
+from results.visualizations.generalization_chart import generalization_chart
 from results.metrics.generalization import generalization_report
 
 
@@ -47,11 +48,12 @@ USE_POST = True         # False = score the comment alone, for the context-sensi
 
 # Train only on pairs where the longer comment wins half the time, so the model cannot learn
 # "longer wins" and has to use the words. False trains on all pairs.
-LENGTH_BALANCED = True
+LENGTH_BALANCED = False
 
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "checkpoint"
 RESUME_PATH = Path(__file__).resolve().parent / "resume_checkpoint" / "training_state.pt"  # saved after every epoch, so --resume-training can continue
 CHART_PATH = Path(__file__).resolve().parents[2] / "results" / "visualizations" / "roberta_dev.png"
+GENERALIZATION_PATH = Path(__file__).resolve().parents[2] / "results" / "visualizations" / "roberta_generalization.png"
 QUICK_PAIRS = 64        # --quick uses this many train pairs and dev pairs
 
 
@@ -281,3 +283,4 @@ if __name__ == "__main__":
         persuasion = load_winning_args(columns_only=True)
         test_results["Persuasion"]["Winning Arguments"] = evaluate("Persuasion test (Winning Arguments)", model.predict(persuasion), persuasion, majority_label)
         generalization_report(test_results)
+        generalization_chart({"RoBERTa": test_results}, GENERALIZATION_PATH)
