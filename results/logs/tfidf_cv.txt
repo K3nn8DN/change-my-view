@@ -1,0 +1,6 @@
+22323 pairs, 3167 posts, 5 folds by post
+
+min_df 5, reg 1e-4      balanced 0.5304 ± 0.0094 (spread over folds)
+min_df 5, reg 1e-5      balanced 0.5391 ± 0.0081 (spread over folds)
+min_df 10, reg 1e-4     balanced 0.5352 ± 0.0084 (spread over folds)
+min_df 2, reg 1e-4      balanced 0.5257 ± 0.0086 (spread over folds)
