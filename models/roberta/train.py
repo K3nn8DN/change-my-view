@@ -267,9 +267,10 @@ if __name__ == "__main__":
             model.fit_length_weight(train)
         model.fit(train, dev, epochs=EPOCHS, resume=resume)
         report_cost(time.perf_counter() - start, sum(weight.numel() for weight in model.model.parameters()))
-        model.save(CHECKPOINT_DIR)
+        if "--quick" not in sys.argv:  # avoids keeping a a --quick model
+            model.save(CHECKPOINT_DIR)
+            print(f"Saved best epoch (dev accuracy {model.best_accuracy:.4f}) to {CHECKPOINT_DIR}")
         RESUME_PATH.unlink(missing_ok=True)  # the run is finished, so there is nothing to resume
-        print(f"Saved best epoch (dev accuracy {model.best_accuracy:.4f}) to {CHECKPOINT_DIR}")
     else:
         if not CHECKPOINT_DIR.exists():
             sys.exit(f"No saved model at {CHECKPOINT_DIR}. Run with --train first.")
