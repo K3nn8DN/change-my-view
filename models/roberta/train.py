@@ -24,17 +24,13 @@ import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # the repo root, so we can import data/
-from data.load_data import TRAIN_SUBREDDITS, UNSEEN_SUBREDDITS, balance_length, length_ratio, load_test_sets, load_training_data, pick_longer, load_winning_args, words
+from data.load_data import balance_length, load_training_data, words
 from sklearn.linear_model import LogisticRegression
 
 from results.metrics.cost import report_cost
-from results.metrics.length_independence import accuracy_by_length_ratio
 from results.run_log import save_output
-from results.metrics.accuracy import accuracy, confusion_report, evaluate
-from results.visualizations.roc import auc, roc_chart
-from results.visualizations.generalization_chart import generalization_chart
-from results.metrics.generalization import generalization_report
-
+from results.metrics.accuracy import accuracy
+from results.run_report import dev_report, test_report
 
 
 # Model settings.
@@ -54,8 +50,6 @@ USE_LENGTH = True  # add a fixed weight * log(1 + words) to each score
 
 CHECKPOINT_DIR = Path(__file__).resolve().parent / "checkpoint"
 RESUME_PATH = Path(__file__).resolve().parent / "resume_checkpoint" / "training_state.pt"  # saved after every epoch, so --resume-training can continue
-CHART_PATH = Path(__file__).resolve().parents[2] / "results" / "visualizations" / "roberta_dev.png"
-GENERALIZATION_PATH = Path(__file__).resolve().parents[2] / "results" / "visualizations" / "roberta_generalization.png"
 QUICK_PAIRS = 64        # --quick uses this many train pairs and dev pairs
 
 
@@ -273,36 +267,19 @@ if __name__ == "__main__":
             model.fit_length_weight(train)
         model.fit(train, dev, epochs=EPOCHS, resume=resume)
         report_cost(time.perf_counter() - start, sum(weight.numel() for weight in model.model.parameters()))
-        model.save(CHECKPOINT_DIR)
+        if "--quick" not in sys.argv:  # avoids keeping a a --quick model
+            model.save(CHECKPOINT_DIR)
+            print(f"Saved best epoch (dev accuracy {model.best_accuracy:.4f}) to {CHECKPOINT_DIR}")
         RESUME_PATH.unlink(missing_ok=True)  # the run is finished, so there is nothing to resume
-        print(f"Saved best epoch (dev accuracy {model.best_accuracy:.4f}) to {CHECKPOINT_DIR}")
     else:
         if not CHECKPOINT_DIR.exists():
             sys.exit(f"No saved model at {CHECKPOINT_DIR}. Run with --train first.")
         model = RoBERTa(CHECKPOINT_DIR)
         print(f"Loaded saved model from {CHECKPOINT_DIR}")
 
-    dev_probabilities = model.predict_probability(dev)
-    dev_predictions = (dev_probabilities >= 0.5).astype(int)
-    evaluate("Dev (changemyview)", dev_predictions, dev, majority_label)
-    confusion_report("Confusion matrix", dev["labels"].to_numpy(), dev_predictions)
-    print(f"ROC AUC: {auc(dev['labels'], dev_probabilities):.3f}")
-    print("\nDev accuracy by length ratio")
-    print(accuracy_by_length_ratio(dev_predictions, dev).to_string(index=False, float_format="%.4f"))
+    dev_report("roberta", model.predict_probability, dev, majority_label, quick="--quick" in sys.argv)
 
-    if "--quick" not in sys.argv: 
-        roc_chart("RoBERTa", dev, dev_probabilities, CHART_PATH)
 
     # The test sets are for the final numbers only: run with --test once the settings are chosen
     if do_test:
-        test_results = {"Seen": {}, "Unseen": {}, "Persuasion": {}}
-
-        for name, pairs in load_test_sets(TRAIN_SUBREDDITS, columns_only=True).items():
-            test_results["Seen"][name] = evaluate(f"Seen test ({name})", model.predict(pairs), pairs, majority_label)
-        for name, pairs in load_test_sets(UNSEEN_SUBREDDITS, columns_only=True).items():
-            test_results["Unseen"][name] = evaluate(f"Unseen test ({name})", model.predict(pairs), pairs, majority_label)
-        # labels = 1 if comment A earned a delta: did the model learn persuasion, or only upvotes?
-        persuasion = load_winning_args(columns_only=True)
-        test_results["Persuasion"]["Winning Arguments"] = evaluate("Persuasion test (Winning Arguments)", model.predict(persuasion), persuasion, majority_label)
-        generalization_report(test_results)
-        generalization_chart({"RoBERTa": test_results}, GENERALIZATION_PATH)
+        test_report("roberta", model.predict_probability, majority_label, quick="--quick" in sys.argv)

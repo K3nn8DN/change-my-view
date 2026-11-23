@@ -15,12 +15,12 @@ import numpy as np
 from scipy import sparse
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # the repo root, so we can import data/
-from data.load_data import (TRAIN_SUBREDDITS, UNSEEN_SUBREDDITS, load_test_sets,
-                            load_training_data, load_winning_args, tokenize, words)
-from results.metrics.accuracy import evaluate
+from data.load_data import load_training_data, tokenize, words
 from results.metrics.cost import report_cost
-from results.metrics.length_independence import accuracy_by_length_ratio
 from results.run_log import save_output
+from results.run_report import dev_report, test_report
+
+QUICK_PAIRS = 500  # pairs used by --quick  
 
 
 # TF-IDF
@@ -209,8 +209,13 @@ def compare_with_sklearn(model, train_features, train_labels, dev_features):
 
 
 if __name__ == "__main__":
-    save_output("tfidf_lr")
+    quick = "--quick" in sys.argv                                                   
+    if not quick:  # save everything printed from here on to results/logs/tfidf_lr.txt  
+        save_output("tfidf_lr")
     train, dev = load_training_data(columns_only=True)
+    if quick:  # random subsets, the same every run                                 
+        train = train.sample(n=QUICK_PAIRS, random_state=0).reset_index(drop=True)  
+        dev = dev.sample(n=QUICK_PAIRS, random_state=0).reset_index(drop=True)
     print(f"{len(train)} train pairs, {len(dev)} dev pairs")
 
     start = time.perf_counter()
@@ -221,25 +226,16 @@ if __name__ == "__main__":
     model.fit(train_features, train["labels"])
     report_cost(time.perf_counter() - start, len(model.weights) + 1)  # the weights and the bias
 
-    def predict(pairs):
-        return model.predict(pair_features(tfidf, pairs))
-
+    def predict_probability(pairs):
+        return model.predict_probability(pair_features(tfidf, pairs))
+    
     majority_label = int(train["labels"].mean() >= 0.5)  # the label more common in train
     dev_features = pair_features(tfidf, dev)
-    dev_predictions = model.predict(dev_features)
-    evaluate("Dev (changemyview)", dev_predictions, dev, majority_label)
-    print("\nDev accuracy by length ratio")
-    print(accuracy_by_length_ratio(dev_predictions, dev).to_string(index=False, float_format="%.4f"))
+    dev_report("tfidf_lr", predict_probability, dev, majority_label, confusion=False, roc=False)
     top_words(model, tfidf)
     compare_with_sklearn(model, train_features, train["labels"], dev_features)
 
     # Pick the settings using the dev set only. When they are final, run once with --test to get
     # the numbers to report.
     if "--test" in sys.argv:
-        for name, pairs in load_test_sets(TRAIN_SUBREDDITS, columns_only=True).items():
-            evaluate(f"Seen test ({name})", predict(pairs), pairs, majority_label)
-        for name, pairs in load_test_sets(UNSEEN_SUBREDDITS, columns_only=True).items():
-            evaluate(f"Unseen test ({name})", predict(pairs), pairs, majority_label)
-        # labels = 1 if comment A earned a delta: did the model learn persuasion, or only upvotes?
-        persuasion = load_winning_args(columns_only=True)
-        evaluate("Persuasion test (Winning Arguments)", predict(persuasion), persuasion, majority_label)
+        test_report("tfidf_lr", predict_probability, majority_label, quick=quick)
