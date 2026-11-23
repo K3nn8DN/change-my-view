@@ -18,9 +18,6 @@ import zipfile
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
-import matplotlib
-matplotlib.use("Agg") 
-import matplotlib.pyplot as plt
 import nltk
 from nltk.corpus import stopwords
 import numpy as np
@@ -31,14 +28,12 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_se
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.append(str(REPO))  # the repo root, so we can import data/
-from data.load_data import (TRAIN_SUBREDDITS, UNSEEN_SUBREDDITS, UNK, balance_length,
-                            build_vocabulary, encode, load_test_sets, load_training_data,
-                            load_winning_args, tokenize, words)
-from results.metrics.accuracy import accuracy, confusion_report, evaluate, length_scores
+from data.load_data import (UNK, balance_length, build_vocabulary, encode,
+                            load_training_data, tokenize, words)   
+from results.metrics.accuracy import accuracy
 from results.metrics.cost import report_cost
-from results.metrics.length_independence import accuracy_by_length_ratio
-from results.visualizations.roc import auc, plot_roc
 from results.run_log import save_output
+from results.run_report import dev_report, test_report
 
 # Settings to tune on the dev set
 EMBEDDING_SIZE = 100     # numbers per word vector (with GloVe: 50, 100, 200 or 300)
@@ -77,8 +72,6 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 GLOVE_REPO = "stanfordnlp/glove"  
 RELEVANCE_SIZE = 100              # GloVe size used for relevance
-
-CHART_PATH = REPO / "results" / "visualizations" / "bilstm_dev.png"
 
 try:  # NLTK's stop word list, downloaded only if missing
     nltk.data.find("corpora/stopwords")
@@ -399,23 +392,12 @@ if __name__ == "__main__":
     # models, in results/metrics/. 
     section("Dev results (r/changemyview)")
     majority_label = int(train["labels"].mean() >= 0.5)  # the more common label in train
-    dev_probabilities = model.predict_probability(dev)
-    dev_predictions = (dev_probabilities >= 0.5).astype(int)
-    evaluate("Dev (changemyview)", dev_predictions, dev, majority_label)
-    confusion_report("Confusion matrix", dev["labels"].to_numpy(), dev_predictions)
-    print(f"ROC AUC: {auc(dev['labels'], dev_probabilities):.3f}")
-    print("\nAccuracy by length ratio")
-    print(accuracy_by_length_ratio(dev_predictions, dev).to_string(index=False, float_format="%.4f"))
-    if not quick:  # a --quick run's chart is not worth keeping
-      roc_chart(dev, dev_probabilities)
+    dev_report("bilstm", model.predict_probability, dev, majority_label, quick=quick)
+
 
     # Pick the settings using the dev set only. When they are final, run once with --test to get
     # the numbers to report.
     if "--test" in sys.argv:
         section("Test results")
-        for name, pairs in load_test_sets(TRAIN_SUBREDDITS, columns_only=True).items():
-            evaluate(f"Seen test ({name})", model.predict(pairs), pairs, majority_label)
-        for name, pairs in load_test_sets(UNSEEN_SUBREDDITS, columns_only=True).items():
-            evaluate(f"Unseen test ({name})", model.predict(pairs), pairs, majority_label)
-        persuasion = load_winning_args(columns_only=True)  # labels = 1 if comment A earned a delta
-        evaluate("Persuasion test (Winning Arguments)", model.predict(persuasion), persuasion, majority_label)
+        test_report("bilstm", model.predict_probability, majority_label, quick=quick)
+
